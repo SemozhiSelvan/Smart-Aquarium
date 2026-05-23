@@ -1,0 +1,200 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <DHT.h>
+#include <Servo.h>
+
+// ---------------- PIN DEFINITIONS ----------------
+#define DHTPIN 2
+#define DHTTYPE DHT11
+
+#define WATER_LEVEL_PIN A0
+#define PH_SENSOR_PIN   A1
+#define AMMONIA_PIN     A2
+
+#define RELAY_PIN       7
+#define BUZZER_PIN      6
+#define LED_PIN         5
+#define FEEDER_PIN      9
+
+// ---------------- OBJECTS ----------------
+DHT dht(DHTPIN, DHTTYPE);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+Servo feederServo;
+
+// ---------------- VARIABLES ----------------
+float temperature;
+int waterLevel;
+int phValue;
+int ammoniaValue;
+
+// Feeding Timer
+unsigned long previousFeedTime = 0;
+const long feedInterval = 15000; // 15 seconds demo timing
+
+void setup()
+{
+  Serial.begin(9600);
+
+  // Sensor Initialization
+  dht.begin();
+
+  // LCD Initialization
+  lcd.init();
+  lcd.backlight();
+
+  // Servo Initialization
+  feederServo.attach(FEEDER_PIN);
+  feederServo.write(0);
+
+  // Pin Modes
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+
+  // Initial States
+  digitalWrite(RELAY_PIN, HIGH);
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(LED_PIN, HIGH);
+
+  // Welcome Message
+  lcd.setCursor(0, 0);
+  lcd.print("SMART AQUARIUM");
+
+  lcd.setCursor(0, 1);
+  lcd.print("INITIALIZING");
+
+  delay(3000);
+  lcd.clear();
+}
+
+void loop()
+{
+  // ---------------- SENSOR READINGS ----------------
+
+  temperature = dht.readTemperature();
+
+  waterLevel = analogRead(WATER_LEVEL_PIN);
+
+  phValue = analogRead(PH_SENSOR_PIN);
+
+  ammoniaValue = analogRead(AMMONIA_PIN);
+
+  // ---------------- SERIAL MONITOR ----------------
+
+  Serial.println("===== SMART AQUARIUM DATA =====");
+
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println(" C");
+
+  Serial.print("Water Level: ");
+  Serial.println(waterLevel);
+
+  Serial.print("pH Sensor: ");
+  Serial.println(phValue);
+
+  Serial.print("Ammonia Level: ");
+  Serial.println(ammoniaValue);
+
+  // ---------------- LCD DISPLAY ----------------
+
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("Temp:");
+  lcd.print(temperature);
+  lcd.print("C");
+
+  lcd.setCursor(0, 1);
+  lcd.print("Water:");
+  lcd.print(waterLevel);
+
+  delay(2000);
+
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("pH:");
+  lcd.print(phValue);
+
+  lcd.setCursor(0, 1);
+  lcd.print("NH3:");
+  lcd.print(ammoniaValue);
+
+  delay(2000);
+
+  // ---------------- AUTOMATIC LIGHT CONTROL ----------------
+
+  if (temperature > 30)
+  {
+    digitalWrite(LED_PIN, HIGH);
+  }
+  else
+  {
+    digitalWrite(LED_PIN, LOW);
+  }
+
+  // ---------------- WATER FILTER CONTROL ----------------
+
+  if (ammoniaValue > 400)
+  {
+    digitalWrite(RELAY_PIN, LOW);
+
+    digitalWrite(BUZZER_PIN, HIGH);
+
+    Serial.println("WARNING: HIGH AMMONIA");
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("HIGH AMMONIA!");
+    lcd.setCursor(0, 1);
+    lcd.print("FILTER ACTIVE");
+
+    delay(3000);
+  }
+  else
+  {
+    digitalWrite(RELAY_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+
+  // ---------------- LOW WATER ALERT ----------------
+
+  if (waterLevel < 200)
+  {
+    digitalWrite(BUZZER_PIN, HIGH);
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("LOW WATER");
+    lcd.setCursor(0, 1);
+    lcd.print("REFILL TANK");
+
+    Serial.println("LOW WATER LEVEL");
+
+    delay(3000);
+  }
+
+  // ---------------- AUTOMATIC FEEDER ----------------
+
+  unsigned long currentTime = millis();
+
+  if (currentTime - previousFeedTime >= feedInterval)
+  {
+    previousFeedTime = currentTime;
+
+    Serial.println("FEEDING FISH");
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("FEEDING FISH");
+
+    feederServo.write(90);
+    delay(1500);
+
+    feederServo.write(0);
+    delay(1000);
+  }
+
+  delay(1000);
+}
